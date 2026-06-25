@@ -14,6 +14,7 @@ export default function PatientDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [patientData, setPatientData] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
