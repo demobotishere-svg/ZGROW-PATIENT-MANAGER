@@ -1,65 +1,69 @@
-import Image from "next/image";
+"use client";
+
+import { motion } from "framer-motion";
+import { Navbar } from "@/components/Navbar";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, UserCircle2, Activity } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-gray-50 text-gray-900 selection:bg-emerald-500/30 overflow-hidden relative flex flex-col">
+      {/* Background Effects */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full bg-gradient-to-b from-emerald-100 to-transparent blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-cyan-100 blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-emerald-50 blur-[100px] pointer-events-none" />
+
+      {/* Grid Pattern */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:64px_64px] pointer-events-none" />
+
+      <Navbar />
+
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center pt-24 px-6 max-w-4xl mx-auto w-full">
+
+        {/* Hero */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="text-center w-full"
+        >
+          <div className="mb-6 flex justify-center">
+            <div className="w-20 h-20 bg-white rounded-3xl shadow-xl shadow-emerald-500/10 flex items-center justify-center border border-emerald-100">
+              <Activity className="w-10 h-10 text-emerald-500" />
+            </div>
+          </div>
+          
+          <h1 className="text-[3rem] md:text-[4rem] font-extrabold tracking-[-0.04em] leading-[1.1] mb-6 text-gray-900">
+            Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-cyan-500">Zgrow Patient Manager</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p className="text-lg md:text-xl text-gray-600 mb-12 max-w-xl mx-auto leading-relaxed font-medium">
+            Access your medical records, upload new reports, and manage your health information easily and securely.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+          <div className="flex flex-col items-center justify-center gap-6">
+            <Link href="/scan" className="w-full sm:w-auto">
+              <Button className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white h-16 px-10 rounded-2xl text-xl font-bold shadow-xl shadow-emerald-500/25 border-0 transition-all hover:shadow-emerald-500/40 hover:scale-[1.02] flex items-center justify-center gap-3">
+                <UserCircle2 className="w-6 h-6" />
+                I am a Patient
+              </Button>
+            </Link>
+            
+            <p className="text-gray-500 text-sm font-medium mt-4">
+              Click the button above and hold your card up to the camera to enter.
+            </p>
+          </div>
+        </motion.div>
+
       </main>
+
+      {/* Footer / Staff Link */}
+      <footer className="relative z-10 w-full py-8 text-center mt-auto">
+        <Link href="/admin/login" className="inline-flex items-center text-xs font-semibold text-gray-400 hover:text-emerald-500 transition-colors">
+          Hospital Staff Login <ArrowRight className="ml-1 w-3 h-3" />
+        </Link>
+      </footer>
     </div>
   );
 }
