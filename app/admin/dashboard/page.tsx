@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, Clock, FileText, Users, Scan, Search, Upload, FileDown, Plus, Eye } from "lucide-react";
+import { CheckCircle, Clock, FileText, Users, Scan, Search, Upload, FileDown, Plus, Eye, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [selectedReportType, setSelectedReportType] = useState<'image' | 'pdf' | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchPatients();
@@ -57,6 +61,49 @@ export default function AdminDashboard() {
       toast.error(err.message);
     } finally {
       setUploadingFor(null);
+    }
+  };
+
+  const handleView = async (reportId: string) => {
+    setSelectedReportId(reportId);
+    try {
+      const res = await fetch(`/api/reports/${reportId}/meta`);
+      const data = await res.json();
+      if (data.isImage) {
+        setSelectedReportType('image');
+      } else {
+        setSelectedReportType('pdf');
+      }
+    } catch (e) {
+      setSelectedReportType('pdf'); // fallback
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingReportId || !deletePassword) return;
+    setIsDeleting(true);
+    toast.info("Deleting report...");
+
+    try {
+      const res = await fetch(`/api/reports/${deletingReportId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete report");
+      }
+      
+      toast.success("Report deleted successfully");
+      setDeletingReportId(null);
+      setDeletePassword("");
+      fetchPatients();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -166,9 +213,17 @@ export default function AdminDashboard() {
                           <div className="flex flex-col gap-1.5">
                             {patient.reports && patient.reports.length > 0 ? (
                               patient.reports.map((r: any) => (
-                                <button key={r.id} onClick={() => setSelectedReportId(r.id)} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold flex items-center gap-1.5 bg-cyan-50 w-fit px-2 py-1 rounded-md">
-                                  <Eye className="w-3.5 h-3.5" /> {r.reportName}
-                                </button>
+                                <div key={r.id} className="flex gap-1.5 w-fit">
+                                  <button onClick={() => handleView(r.id)} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold flex items-center gap-1.5 bg-cyan-50 px-2 py-1 rounded-md">
+                                    <Eye className="w-3.5 h-3.5" /> View
+                                  </button>
+                                  <a href={`/api/reports/${r.id}`} target="_blank" className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 px-2 py-1 rounded-md">
+                                    <FileDown className="w-3.5 h-3.5" /> DL
+                                  </a>
+                                  <button onClick={() => setDeletingReportId(r.id)} className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1.5 bg-red-50 px-2 py-1 rounded-md">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               ))
                             ) : (
                               <span className="text-xs text-gray-400 italic">No reports</span>
@@ -219,9 +274,20 @@ export default function AdminDashboard() {
                       <div className="flex flex-wrap gap-2">
                         {patient.reports && patient.reports.length > 0 ? (
                           patient.reports.map((r: any) => (
-                            <button key={r.id} onClick={() => setSelectedReportId(r.id)} className="text-xs text-cyan-700 font-bold flex items-center gap-1 bg-cyan-50/80 border border-cyan-100 px-2.5 py-1.5 rounded-md shadow-sm">
-                              <Eye className="w-3.5 h-3.5" /> {r.reportName}
-                            </button>
+                            <div key={r.id} className="flex flex-col gap-1 w-full bg-gray-50 p-2 rounded-lg border border-gray-100">
+                              <span className="text-xs font-bold text-gray-700 truncate">{r.reportName}</span>
+                              <div className="flex gap-1 w-full">
+                                <button onClick={() => handleView(r.id)} className="flex-1 text-xs text-cyan-700 font-bold flex items-center justify-center gap-1 bg-cyan-50/80 border border-cyan-100 px-2 py-1.5 rounded-md shadow-sm">
+                                  <Eye className="w-3 h-3" /> View
+                                </button>
+                                <a href={`/api/reports/${r.id}`} target="_blank" className="flex-1 text-xs text-emerald-700 font-bold flex items-center justify-center gap-1 bg-emerald-50/80 border border-emerald-100 px-2 py-1.5 rounded-md shadow-sm">
+                                  <FileDown className="w-3 h-3" /> DL
+                                </a>
+                                <button onClick={() => setDeletingReportId(r.id)} className="flex-1 text-xs text-red-700 font-bold flex items-center justify-center gap-1 bg-red-50/80 border border-red-100 px-2 py-1.5 rounded-md shadow-sm">
+                                  <Trash2 className="w-3 h-3" /> Del
+                                </button>
+                              </div>
+                            </div>
                           ))
                         ) : (
                           <span className="text-xs text-gray-400 italic">None uploaded</span>
@@ -254,19 +320,59 @@ export default function AdminDashboard() {
         </div>
 
         {/* Report Viewer Dialog */}
-        <Dialog open={!!selectedReportId} onOpenChange={(open) => !open && setSelectedReportId(null)}>
+        <Dialog open={!!selectedReportId} onOpenChange={(open) => {
+          if (!open) {
+            setSelectedReportId(null);
+            setSelectedReportType(null);
+          }
+        }}>
           <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden">
             <DialogHeader className="p-4 border-b bg-white flex-shrink-0">
               <DialogTitle>View Document</DialogTitle>
             </DialogHeader>
-            <div className="flex-1 w-full bg-gray-100 relative">
-              {selectedReportId && (
+            <div className="flex-1 w-full bg-gray-100 relative overflow-auto flex items-center justify-center p-4">
+              {selectedReportId && selectedReportType === 'image' && (
+                <img 
+                  src={`/api/reports/${selectedReportId}`} 
+                  className="max-w-full max-h-full object-contain rounded-md shadow-sm"
+                  alt="Document Viewer"
+                />
+              )}
+              {selectedReportId && selectedReportType === 'pdf' && (
                 <iframe 
                   src={`/api/reports/${selectedReportId}`} 
                   className="absolute inset-0 w-full h-full border-0"
                   title="Document Viewer"
                 />
               )}
+              {selectedReportId && !selectedReportType && (
+                <div className="animate-pulse text-gray-500 font-medium">Loading document...</div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={!!deletingReportId} onOpenChange={(open) => !open && setDeletingReportId(null)}>
+          <DialogContent className="max-w-sm w-[90vw]">
+            <DialogHeader>
+              <DialogTitle className="text-red-600">Delete Report?</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-gray-600 mb-4">Please enter your password to confirm permanent deletion of this report.</p>
+              <Input 
+                type="password" 
+                placeholder="Password" 
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="w-full border-gray-200"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeletingReportId(null)} disabled={isDeleting}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || !deletePassword}>
+                {isDeleting ? "Deleting..." : "Confirm Delete"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
