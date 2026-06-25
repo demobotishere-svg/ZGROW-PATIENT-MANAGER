@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, FileDown, Plus, Calendar, MapPin, UserSquare2, Camera } from "lucide-react";
+import { FileText, FileDown, Plus, Calendar, MapPin, UserSquare2, Camera, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -206,7 +207,10 @@ export default function PatientDashboard() {
                         <TableCell className="text-sm text-gray-500 font-medium">
                           {new Date(report.uploadDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                         </TableCell>
-                        <TableCell className="text-right px-6">
+                        <TableCell className="text-right px-6 flex justify-end gap-2">
+                          <Button onClick={() => setSelectedReportId(report.id)} variant="outline" size="sm" className="h-9 px-4 border-cyan-200 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 shadow-sm rounded-lg font-bold transition-colors">
+                            <Eye className="w-4 h-4 mr-2" /> View
+                          </Button>
                           <a href={`/api/reports/${report.id}`} target="_blank" rel="noreferrer">
                             <Button variant="outline" size="sm" className="h-9 px-4 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm rounded-lg font-bold transition-colors">
                               <FileDown className="w-4 h-4 mr-2" /> Download
@@ -234,17 +238,40 @@ export default function PatientDashboard() {
                         </p>
                       </div>
                     </div>
-                    <a href={`/api/reports/${report.id}`} target="_blank" rel="noreferrer" className="w-full">
-                      <Button variant="outline" size="sm" className="w-full h-10 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm rounded-lg font-bold">
-                        <FileDown className="w-4 h-4 mr-2" /> Download Report
+                    <div className="flex gap-2 w-full mt-2">
+                      <Button onClick={() => setSelectedReportId(report.id)} variant="outline" size="sm" className="flex-1 h-10 border-cyan-200 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 shadow-sm rounded-lg font-bold">
+                        <Eye className="w-4 h-4 mr-2" /> View
                       </Button>
-                    </a>
+                      <a href={`/api/reports/${report.id}`} target="_blank" rel="noreferrer" className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full h-10 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm rounded-lg font-bold">
+                          <FileDown className="w-4 h-4 mr-2" /> Download
+                        </Button>
+                      </a>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
         </div>
+
+        {/* Report Viewer Dialog */}
+        <Dialog open={!!selectedReportId} onOpenChange={(open) => !open && setSelectedReportId(null)}>
+          <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 border-b bg-white flex-shrink-0">
+              <DialogTitle>View Document</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 w-full bg-gray-100 relative">
+              {selectedReportId && (
+                <iframe 
+                  src={`/api/reports/${selectedReportId}`} 
+                  className="absolute inset-0 w-full h-full border-0"
+                  title="Document Viewer"
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

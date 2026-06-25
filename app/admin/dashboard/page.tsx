@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, Clock, FileText, Users, Scan, Search, Upload, FileDown, Plus } from "lucide-react";
+import { CheckCircle, Clock, FileText, Users, Scan, Search, Upload, FileDown, Plus, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPatients();
@@ -164,9 +166,9 @@ export default function AdminDashboard() {
                           <div className="flex flex-col gap-1.5">
                             {patient.reports && patient.reports.length > 0 ? (
                               patient.reports.map((r: any) => (
-                                <a key={r.id} href={`/api/reports/${r.id}`} target="_blank" className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 w-fit px-2 py-1 rounded-md">
-                                  <FileDown className="w-3.5 h-3.5" /> {r.reportName}
-                                </a>
+                                <button key={r.id} onClick={() => setSelectedReportId(r.id)} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold flex items-center gap-1.5 bg-cyan-50 w-fit px-2 py-1 rounded-md">
+                                  <Eye className="w-3.5 h-3.5" /> {r.reportName}
+                                </button>
                               ))
                             ) : (
                               <span className="text-xs text-gray-400 italic">No reports</span>
@@ -217,9 +219,9 @@ export default function AdminDashboard() {
                       <div className="flex flex-wrap gap-2">
                         {patient.reports && patient.reports.length > 0 ? (
                           patient.reports.map((r: any) => (
-                            <a key={r.id} href={`/api/reports/${r.id}`} target="_blank" className="text-xs text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50/80 border border-emerald-100 px-2.5 py-1.5 rounded-md shadow-sm">
-                              <FileDown className="w-3.5 h-3.5" /> {r.reportName}
-                            </a>
+                            <button key={r.id} onClick={() => setSelectedReportId(r.id)} className="text-xs text-cyan-700 font-bold flex items-center gap-1 bg-cyan-50/80 border border-cyan-100 px-2.5 py-1.5 rounded-md shadow-sm">
+                              <Eye className="w-3.5 h-3.5" /> {r.reportName}
+                            </button>
                           ))
                         ) : (
                           <span className="text-xs text-gray-400 italic">None uploaded</span>
@@ -250,6 +252,24 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* Report Viewer Dialog */}
+        <Dialog open={!!selectedReportId} onOpenChange={(open) => !open && setSelectedReportId(null)}>
+          <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 border-b bg-white flex-shrink-0">
+              <DialogTitle>View Document</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 w-full bg-gray-100 relative">
+              {selectedReportId && (
+                <iframe 
+                  src={`/api/reports/${selectedReportId}`} 
+                  className="absolute inset-0 w-full h-full border-0"
+                  title="Document Viewer"
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
