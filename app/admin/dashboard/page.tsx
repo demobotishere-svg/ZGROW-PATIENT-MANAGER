@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { PDFViewer } from "@/components/PDFViewer";
 
 export default function AdminDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
@@ -339,11 +340,9 @@ export default function AdminDashboard() {
                 />
               )}
               {selectedReportId && selectedReportType === 'pdf' && (
-                <iframe 
-                  src={`/api/reports/${selectedReportId}`} 
-                  className="absolute inset-0 w-full h-full border-0"
-                  title="Document Viewer"
-                />
+                <div className="w-full h-full overflow-y-auto">
+                  <PDFViewer url={`/api/reports/${selectedReportId}`} />
+                </div>
               )}
               {selectedReportId && !selectedReportType && (
                 <div className="animate-pulse text-gray-500 font-medium">Loading document...</div>
