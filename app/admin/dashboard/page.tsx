@@ -9,7 +9,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { PDFViewer } from "@/components/PDFViewer";
+import dynamic from "next/dynamic";
+
+const PDFViewer = dynamic(() => import("@/components/PDFViewer").then(mod => mod.PDFViewer), { ssr: false });
 
 export default function AdminDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
