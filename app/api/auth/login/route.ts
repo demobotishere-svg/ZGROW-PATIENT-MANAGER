@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET || "fallback-secret");
-    const token = await new jose.SignJWT({ userId: user.id, email: user.email, name: user.name })
+    const token = await new jose.SignJWT({ userId: user.id, email: user.email, name: user.name, role: user.role })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("7d")
       .sign(secret);

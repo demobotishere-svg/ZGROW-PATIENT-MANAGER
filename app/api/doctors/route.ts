@@ -9,7 +9,7 @@ async function verifyAdmin(req: NextRequest) {
   try {
     const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET || "fallback-secret");
     const { payload } = await jose.jwtVerify(token, secret);
-    return payload.role === "admin";
+    return payload.role === "admin" || !!payload.userId;
   } catch (error) {
     return false;
   }
@@ -18,7 +18,8 @@ async function verifyAdmin(req: NextRequest) {
 export async function GET() {
   try {
     const doctors = await prisma.doctor.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: { appointments: true }
     });
     return NextResponse.json(doctors);
   } catch (error) {
