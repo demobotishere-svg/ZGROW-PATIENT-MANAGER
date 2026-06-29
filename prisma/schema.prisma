@@ -29,6 +29,7 @@ model Patient {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   reports            MedicalReport[]
+  appointments       Appointment[]
 }
 
 model MedicalReport {
@@ -41,4 +42,46 @@ model MedicalReport {
   pdfData    String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  chatSessions ChatSession[]
+}
+
+model Doctor {
+  id            String   @id @default(uuid())
+  name          String
+  designation   String
+  availableSlots String[] // E.g., ["10:00 AM", "2:00 PM"]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  appointments  Appointment[]
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  doctorId    String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  doctor      Doctor   @relation(fields: [doctorId], references: [id])
+  date        String
+  timeSlot    String
+  status      String   @default("PENDING") // PENDING, CONFIRMED, REJECTED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChatSession {
+  id          String   @id @default(uuid())
+  reportId    String
+  report      MedicalReport @relation(fields: [reportId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  messages    ChatMessage[]
+}
+
+model ChatMessage {
+  id            String   @id @default(uuid())
+  sessionId     String
+  session       ChatSession @relation(fields: [sessionId], references: [id])
+  role          String   // 'user' or 'ai'
+  content       String
+  createdAt     DateTime @default(now())
 }

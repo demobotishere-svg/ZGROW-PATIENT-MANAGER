@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, Clock, FileText, Users, Scan, Search, Upload, FileDown, Plus, Eye, Trash2 } from "lucide-react";
+import { CheckCircle, Clock, FileText, Users, Search, Plus, Eye, Trash2, Calendar as CalendarIcon, UserPlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -14,18 +13,30 @@ import dynamic from "next/dynamic";
 const PDFViewer = dynamic(() => import("@/components/PDFViewer").then(mod => mod.PDFViewer), { ssr: false });
 
 export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<'patients' | 'doctors' | 'appointments'>('patients');
+  
+  // Patients State
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [selectedReportType, setSelectedReportType] = useState<'image' | 'pdf' | null>(null);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Doctors State
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
+  const [newDoctor, setNewDoctor] = useState({ name: "", designation: "", availableSlots: "" });
+
+  // Appointments State
+  const [appointments, setAppointments] = useState<any[]>([]);
+
   useEffect(() => {
     fetchPatients();
+    fetchDoctors();
+    fetchAppointments();
   }, []);
 
   const fetchPatients = async () => {
@@ -40,30 +51,59 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleFileUpload = async (patientId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingFor(patientId);
-    toast.info("Uploading report...");
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("patientId", patientId);
-    formData.append("reportName", file.name.split(".")[0]);
-
+  const fetchDoctors = async () => {
     try {
-      const res = await fetch("/api/reports", {
+      const res = await fetch("/api/doctors");
+      const data = await res.json();
+      setDoctors(data);
+    } catch (err) {
+      toast.error("Failed to load doctors");
+    }
+  };
+
+  const fetchAppointments = async () => {
+    try {
+      const res = await fetch("/api/appointments/admin");
+      const data = await res.json();
+      setAppointments(data);
+    } catch (err) {
+      toast.error("Failed to load appointments");
+    }
+  };
+
+  const handleAddDoctor = async () => {
+    if (!newDoctor.name || !newDoctor.designation || !newDoctor.availableSlots) {
+      return toast.error("Please fill all fields");
+    }
+    const slots = newDoctor.availableSlots.split(",").map(s => s.trim());
+    try {
+      const res = await fetch("/api/doctors", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newDoctor.name, designation: newDoctor.designation, availableSlots: slots })
       });
-      if (!res.ok) throw new Error("Upload failed");
-      toast.success("Report uploaded successfully!");
-      fetchPatients();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setUploadingFor(null);
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Doctor added!");
+      setIsDoctorModalOpen(false);
+      setNewDoctor({ name: "", designation: "", availableSlots: "" });
+      fetchDoctors();
+    } catch (err) {
+      toast.error("Failed to add doctor");
+    }
+  };
+
+  const handleAppointmentStatus = async (appointmentId: string, status: string) => {
+    try {
+      const res = await fetch("/api/appointments/admin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId, status })
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(`Appointment ${status.toLowerCase()}`);
+      fetchAppointments();
+    } catch (err) {
+      toast.error("Error updating appointment");
     }
   };
 
@@ -78,27 +118,20 @@ export default function AdminDashboard() {
         setSelectedReportType('pdf');
       }
     } catch (e) {
-      setSelectedReportType('pdf'); // fallback
+      setSelectedReportType('pdf');
     }
   };
 
   const handleDelete = async () => {
     if (!deletingReportId || !deletePassword) return;
     setIsDeleting(true);
-    toast.info("Deleting report...");
-
     try {
       const res = await fetch(`/api/reports/${deletingReportId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: deletePassword })
       });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to delete report");
-      }
-      
+      if (!res.ok) throw new Error("Failed to delete report");
       toast.success("Report deleted successfully");
       setDeletingReportId(null);
       setDeletePassword("");
@@ -115,265 +148,170 @@ export default function AdminDashboard() {
     (p.firstName + " " + p.lastName).toLowerCase().includes(search.toLowerCase())
   );
 
-  const verified = patients.filter((p) => p.verificationStatus === "Verified").length;
-  const pending = patients.filter((p) => p.verificationStatus === "Pending").length;
-
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 selection:bg-violet-500/30 relative overflow-x-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] sm:w-[600px] h-[300px] sm:h-[400px] rounded-full bg-violet-100/50 blur-[80px] sm:blur-[100px] pointer-events-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:32px_32px] sm:bg-[size:64px_64px] pointer-events-none" />
-
       <DashboardNavbar />
 
       <main className="relative z-10 pt-24 pb-16 px-4 sm:px-6 max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 text-gray-900">Admin Dashboard</h1>
-            <p className="text-sm text-gray-500 font-medium">Manage patients and medical records.</p>
-          </div>
-          <Link href="/scan" className="w-full md:w-auto">
-            <Button className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white text-sm font-bold h-12 px-6 shadow-xl shadow-emerald-500/20 border-0 rounded-xl transition-all duration-300 hover:scale-[1.02]">
-              <Scan className="w-5 h-5 mr-2" />
-              Scan New Patient
-            </Button>
-          </Link>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
-          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm transition-all duration-300 hover:shadow-md">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-violet-50 border border-violet-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-violet-600" />
-              </div>
-              <span className="text-sm text-gray-600 font-bold">Total Patients</span>
-            </div>
-            <p className="text-4xl font-black tracking-tight text-gray-900">{patients.length}</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm transition-all duration-300 hover:shadow-md">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-emerald-600" />
-              </div>
-              <span className="text-sm text-gray-600 font-bold">Verified Cards</span>
-            </div>
-            <p className="text-4xl font-black tracking-tight text-gray-900">{verified}</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm transition-all duration-300 hover:shadow-md">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center">
-                <Clock className="w-6 h-6 text-amber-600" />
-              </div>
-              <span className="text-sm text-gray-600 font-bold">Pending Reviews</span>
-            </div>
-            <p className="text-4xl font-black tracking-tight text-gray-900">{pending}</p>
+            <p className="text-sm text-gray-500 font-medium">Manage patients, doctors, and appointments.</p>
           </div>
         </div>
 
-        {/* Search & Records */}
-        <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md">
-          <div className="px-5 sm:px-6 pt-6 pb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100">
-            <h2 className="text-lg font-extrabold flex items-center gap-3 text-gray-900">
-              <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center">
-                <FileText className="w-4 h-4 text-violet-600" />
+        {/* Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-gray-200">
+          <button onClick={() => setActiveTab('patients')} className={`pb-2 font-bold ${activeTab === 'patients' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>Patients</button>
+          <button onClick={() => setActiveTab('doctors')} className={`pb-2 font-bold ${activeTab === 'doctors' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>Doctors</button>
+          <button onClick={() => setActiveTab('appointments')} className={`pb-2 font-bold ${activeTab === 'appointments' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>Appointments</button>
+        </div>
+
+        {/* PATIENTS TAB */}
+        {activeTab === 'patients' && (
+          <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm">
+            <div className="px-6 pt-6 pb-5 flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-gray-100">
+              <h2 className="text-lg font-extrabold flex items-center gap-3">
+                <FileText className="w-5 h-5 text-violet-600" /> Patient Records
+              </h2>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <Input placeholder="Search ID or Name..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
               </div>
-              Patient Records
-            </h2>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <Input 
-                placeholder="Search ID or Name..." 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 text-sm h-10 pl-10 focus:border-violet-500/50 rounded-xl" 
-              />
             </div>
-          </div>
-
-          {isLoading ? (
-            <div className="text-center py-16 text-gray-500 text-sm animate-pulse">Loading records...</div>
-          ) : filteredPatients.length === 0 ? (
-            <div className="text-center py-16 text-gray-500 text-sm">No patients found.</div>
-          ) : (
-            <div className="w-full">
-              {/* Desktop Table View */}
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gray-100 hover:bg-transparent">
-                      <TableHead className="text-gray-500 text-sm font-semibold px-6 py-4">Patient ID</TableHead>
-                      <TableHead className="text-gray-500 text-sm font-semibold py-4">Name</TableHead>
-                      <TableHead className="text-gray-500 text-sm font-semibold py-4">Reports</TableHead>
-                      <TableHead className="text-gray-500 text-sm font-semibold text-right px-6 py-4">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPatients.map((patient) => (
-                      <TableRow key={patient.id} className="border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <TableCell className="px-6 py-4 text-sm font-mono text-violet-600 font-medium">{patient.patientId || "—"}</TableCell>
-                        <TableCell className="py-4 text-sm font-bold text-gray-900">{patient.firstName} {patient.lastName}</TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex flex-col gap-1.5">
-                            {patient.reports && patient.reports.length > 0 ? (
-                              patient.reports.map((r: any) => (
-                                <div key={r.id} className="flex gap-1.5 w-fit">
-                                  <button onClick={() => handleView(r.id)} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold flex items-center gap-1.5 bg-cyan-50 px-2 py-1 rounded-md">
-                                    <Eye className="w-3.5 h-3.5" /> View
-                                  </button>
-                                  <a href={`/api/reports/${r.id}`} target="_blank" className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 px-2 py-1 rounded-md">
-                                    <FileDown className="w-3.5 h-3.5" /> DL
-                                  </a>
-                                  <button onClick={() => setDeletingReportId(r.id)} className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1.5 bg-red-50 px-2 py-1 rounded-md">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              ))
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">No reports</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right px-6 py-4">
-                          <div className="flex justify-end items-center gap-2">
-                            <input 
-                              type="file" 
-                              id={`upload-${patient.id}`} 
-                              className="hidden" 
-                              accept=".pdf" 
-                              onChange={(e) => handleFileUpload(patient.id, e)} 
-                            />
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => document.getElementById(`upload-${patient.id}`)?.click()}
-                              disabled={uploadingFor === patient.id}
-                              className="text-xs h-9 px-4 border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm rounded-lg font-bold transition-all"
-                            >
-                              {uploadingFor === patient.id ? "Uploading..." : <><Plus className="w-4 h-4 mr-1.5" /> Upload PDF</>}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile List View */}
-              <div className="md:hidden flex flex-col divide-y divide-gray-100">
-                {filteredPatients.map((patient) => (
-                  <div key={patient.id} className="p-5 flex flex-col gap-4">
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <h4 className="font-bold text-gray-900 text-base mb-1">{patient.firstName} {patient.lastName}</h4>
-                        <p className="text-xs font-mono text-violet-600 font-medium bg-violet-50 inline-block px-2 py-0.5 rounded-md">
-                          {patient.patientId || "No ID"}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-gray-500 font-semibold mb-2">Reports:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {patient.reports && patient.reports.length > 0 ? (
-                          patient.reports.map((r: any) => (
-                            <div key={r.id} className="flex flex-col gap-1 w-full bg-gray-50 p-2 rounded-lg border border-gray-100">
-                              <span className="text-xs font-bold text-gray-700 truncate">{r.reportName}</span>
-                              <div className="flex gap-1 w-full">
-                                <button onClick={() => handleView(r.id)} className="flex-1 text-xs text-cyan-700 font-bold flex items-center justify-center gap-1 bg-cyan-50/80 border border-cyan-100 px-2 py-1.5 rounded-md shadow-sm">
-                                  <Eye className="w-3 h-3" /> View
-                                </button>
-                                <a href={`/api/reports/${r.id}`} target="_blank" className="flex-1 text-xs text-emerald-700 font-bold flex items-center justify-center gap-1 bg-emerald-50/80 border border-emerald-100 px-2 py-1.5 rounded-md shadow-sm">
-                                  <FileDown className="w-3 h-3" /> DL
-                                </a>
-                                <button onClick={() => setDeletingReportId(r.id)} className="flex-1 text-xs text-red-700 font-bold flex items-center justify-center gap-1 bg-red-50/80 border border-red-100 px-2 py-1.5 rounded-md shadow-sm">
-                                  <Trash2 className="w-3 h-3" /> Del
-                                </button>
-                              </div>
+            {isLoading ? <div className="text-center py-16 animate-pulse">Loading...</div> : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Reports</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPatients.map((patient) => (
+                    <TableRow key={patient.id}>
+                      <TableCell className="font-mono text-violet-600 font-medium">{patient.patientId || "—"}</TableCell>
+                      <TableCell className="font-bold">{patient.firstName} {patient.lastName}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1.5">
+                          {patient.reports?.map((r: any) => (
+                            <div key={r.id} className="flex gap-1.5">
+                              <button onClick={() => handleView(r.id)} className="text-xs text-cyan-600 bg-cyan-50 px-2 py-1 rounded">View</button>
+                              <button onClick={() => setDeletingReportId(r.id)} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                             </div>
-                          ))
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">None uploaded</span>
-                        )}
-                      </div>
-                    </div>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        )}
 
-                    <div className="mt-1">
-                      <input 
-                        type="file" 
-                        id={`upload-mobile-${patient.id}`} 
-                        className="hidden" 
-                        accept=".pdf" 
-                        onChange={(e) => handleFileUpload(patient.id, e)} 
-                      />
-                      <Button 
-                        variant="outline" 
-                        onClick={() => document.getElementById(`upload-mobile-${patient.id}`)?.click()}
-                        disabled={uploadingFor === patient.id}
-                        className="w-full text-sm h-10 border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm rounded-lg font-bold"
-                      >
-                        {uploadingFor === patient.id ? "Uploading..." : <><Plus className="w-4 h-4 mr-2" /> Upload New PDF</>}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {/* DOCTORS TAB */}
+        {activeTab === 'doctors' && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-extrabold flex items-center gap-3">
+                <Users className="w-5 h-5 text-emerald-600" /> Doctors
+              </h2>
+              <Button onClick={() => setIsDoctorModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white"><UserPlus className="w-4 h-4 mr-2"/> Add Doctor</Button>
             </div>
-          )}
-        </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Designation</TableHead>
+                  <TableHead>Available Slots</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {doctors.map(d => (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-bold">{d.name}</TableCell>
+                    <TableCell>{d.designation}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 flex-wrap">
+                        {d.availableSlots.map((s: string) => <span key={s} className="bg-gray-100 px-2 py-1 text-xs rounded">{s}</span>)}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-        {/* Report Viewer Dialog */}
-        <Dialog open={!!selectedReportId} onOpenChange={(open) => {
-          if (!open) {
-            setSelectedReportId(null);
-            setSelectedReportType(null);
-          }
-        }}>
-          <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden">
-            <DialogHeader className="p-4 border-b bg-white flex-shrink-0">
+        {/* APPOINTMENTS TAB */}
+        {activeTab === 'appointments' && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm">
+            <h2 className="text-lg font-extrabold flex items-center gap-3 mb-6">
+              <CalendarIcon className="w-5 h-5 text-amber-600" /> Appointments
+            </h2>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Patient</TableHead>
+                  <TableHead>Doctor</TableHead>
+                  <TableHead>Date & Time</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {appointments.map(a => (
+                  <TableRow key={a.id}>
+                    <TableCell className="font-bold">{a.patient.firstName} {a.patient.lastName}</TableCell>
+                    <TableCell>{a.doctor.name} ({a.doctor.designation})</TableCell>
+                    <TableCell>{a.date} at {a.timeSlot}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 text-xs rounded font-bold ${a.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : a.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {a.status}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {a.status === 'PENDING' && (
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => handleAppointmentStatus(a.id, 'CONFIRMED')} className="bg-emerald-500 hover:bg-emerald-600 h-8">Approve</Button>
+                          <Button size="sm" onClick={() => handleAppointmentStatus(a.id, 'REJECTED')} variant="destructive" className="h-8">Reject</Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {/* View Document Dialog */}
+        <Dialog open={!!selectedReportId} onOpenChange={(open) => !open && setSelectedReportId(null)}>
+          <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 flex flex-col">
+            <DialogHeader className="p-4 border-b">
               <DialogTitle>View Document</DialogTitle>
             </DialogHeader>
-            <div className="flex-1 w-full bg-gray-100 relative overflow-auto flex items-center justify-center p-4">
-              {selectedReportId && selectedReportType === 'image' && (
-                <img 
-                  src={`/api/reports/${selectedReportId}`} 
-                  className="max-w-full max-h-full object-contain rounded-md shadow-sm"
-                  alt="Document Viewer"
-                />
-              )}
-              {selectedReportId && selectedReportType === 'pdf' && (
-                <div className="w-full h-full overflow-y-auto">
-                  <PDFViewer url={`/api/reports/${selectedReportId}`} />
-                </div>
-              )}
-              {selectedReportId && !selectedReportType && (
-                <div className="animate-pulse text-gray-500 font-medium">Loading document...</div>
-              )}
+            <div className="flex-1 overflow-auto p-4 bg-gray-100 flex items-center justify-center">
+              {selectedReportId && selectedReportType === 'image' && <img src={`/api/reports/${selectedReportId}`} className="max-w-full max-h-full object-contain" />}
+              {selectedReportId && selectedReportType === 'pdf' && <PDFViewer url={`/api/reports/${selectedReportId}`} />}
             </div>
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={!!deletingReportId} onOpenChange={(open) => !open && setDeletingReportId(null)}>
-          <DialogContent className="max-w-sm w-[90vw]">
+        {/* Add Doctor Dialog */}
+        <Dialog open={isDoctorModalOpen} onOpenChange={setIsDoctorModalOpen}>
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="text-red-600">Delete Report?</DialogTitle>
+              <DialogTitle>Add New Doctor</DialogTitle>
             </DialogHeader>
-            <div className="py-4">
-              <p className="text-sm text-gray-600 mb-4">Please enter your password to confirm permanent deletion of this report.</p>
-              <Input 
-                type="password" 
-                placeholder="Password" 
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                className="w-full border-gray-200"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingReportId(null)} disabled={isDeleting}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || !deletePassword}>
-                {isDeleting ? "Deleting..." : "Confirm Delete"}
-              </Button>
+            <div className="flex flex-col gap-4 py-4">
+              <Input placeholder="Dr. Name" value={newDoctor.name} onChange={e => setNewDoctor({...newDoctor, name: e.target.value})} />
+              <Input placeholder="Designation (e.g., Cardiologist)" value={newDoctor.designation} onChange={e => setNewDoctor({...newDoctor, designation: e.target.value})} />
+              <Input placeholder="Slots (comma separated, e.g., 10:00 AM, 11:30 AM)" value={newDoctor.availableSlots} onChange={e => setNewDoctor({...newDoctor, availableSlots: e.target.value})} />
+              <Button onClick={handleAddDoctor}>Save Doctor</Button>
             </div>
           </DialogContent>
         </Dialog>

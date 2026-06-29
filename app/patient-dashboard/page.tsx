@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DashboardNavbar } from "@/components/DashboardNavbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, FileDown, Plus, Calendar, MapPin, UserSquare2, Camera, Eye, Trash2 } from "lucide-react";
+import { FileText, FileDown, Plus, Eye, Trash2, CalendarIcon, Send, Bot, User } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,69 +14,95 @@ import dynamic from "next/dynamic";
 const PDFViewer = dynamic(() => import("@/components/PDFViewer").then(mod => mod.PDFViewer), { ssr: false });
 
 export default function PatientDashboard() {
-  const [reports, setReports] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'records' | 'book' | 'appointments'>('records');
   const [patientData, setPatientData] = useState<any>(null);
+  
+  // Records State
+  const [reports, setReports] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [selectedReportType, setSelectedReportType] = useState<'image' | 'pdf' | null>(null);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Appointments State
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [myAppointments, setMyAppointments] = useState<any[]>([]);
+  const [booking, setBooking] = useState({ doctorId: "", date: "", timeSlot: "" });
+
+  // Chat State
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const router = useRouter();
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const res = await fetch("/api/auth/session");
-        const data = await res.json();
-        
-        if (!data.authenticated || data.session.role !== "patient") {
-          router.push("/patient-login");
-          return;
-        }
-        
-        setPatientData(data.session);
-        fetchReports(data.session.id);
-      } catch (e) {
-        router.push("/patient-login");
-      }
-    };
-    
-    checkSession();
+    fetchSession();
+    fetchDoctors();
   }, []);
 
-  const fetchReports = async (patientDbId: string) => {
+  useEffect(() => {
+    if (chatOpen && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, chatOpen]);
+
+  const fetchSession = async () => {
     try {
-      const res = await fetch(`/api/reports?patientId=${patientDbId}`);
+      const res = await fetch("/api/auth/session");
       const data = await res.json();
-      if (data.reports) setReports(data.reports);
+      if (!data.authenticated || data.role !== "patient") {
+        return router.push("/patient-login");
+      }
+      setPatientData({ id: data.id, firstName: data.name.split(" ")[0], lastName: data.name.split(" ")[1] || "" });
+      fetchReports(data.id);
+      fetchAppointments();
+    } catch (err) {
+      router.push("/patient-login");
+    }
+  };
+
+  const fetchReports = async (patientId: string) => {
+    try {
+      const res = await fetch(`/api/patients?id=${patientId}`);
+      const data = await res.json();
+      setReports(data.reports || []);
     } catch (err) {
       toast.error("Failed to load reports");
-    } finally {
-      setIsLoading(false);
     }
+  };
+
+  const fetchDoctors = async () => {
+    try {
+      const res = await fetch("/api/doctors");
+      setDoctors(await res.json());
+    } catch (err) {}
+  };
+
+  const fetchAppointments = async () => {
+    try {
+      const res = await fetch("/api/appointments");
+      setMyAppointments(await res.json());
+    } catch (err) {}
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !patientData) return;
-
     setIsUploading(true);
-    toast.info("Uploading your medical report...");
-
+    toast.info("Uploading report...");
     const formData = new FormData();
     formData.append("file", file);
     formData.append("patientId", patientData.id);
     formData.append("reportName", file.name.split(".")[0]);
 
     try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/reports", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Upload failed");
-      toast.success("Medical report uploaded successfully!");
+      toast.success("Report uploaded successfully!");
       fetchReports(patientData.id);
     } catch (err: any) {
       toast.error(err.message);
@@ -85,287 +111,229 @@ export default function PatientDashboard() {
     }
   };
 
-  const handleView = async (reportId: string) => {
-    setSelectedReportId(reportId);
+  const handleBookAppointment = async () => {
+    if (!booking.doctorId || !booking.date || !booking.timeSlot) {
+      return toast.error("Please fill all booking details");
+    }
     try {
-      const res = await fetch(`/api/reports/${reportId}/meta`);
-      const data = await res.json();
-      if (data.isImage) {
-        setSelectedReportType('image');
-      } else {
-        setSelectedReportType('pdf');
-      }
-    } catch (e) {
-      setSelectedReportType('pdf'); // fallback
+      const res = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(booking)
+      });
+      if (!res.ok) throw new Error("Booking failed");
+      toast.success("Appointment booked successfully! Waiting for admin approval.");
+      setBooking({ doctorId: "", date: "", timeSlot: "" });
+      setActiveTab('appointments');
+      fetchAppointments();
+    } catch (err) {
+      toast.error("Failed to book appointment");
     }
   };
 
-  const handleDelete = async () => {
-    if (!deletingReportId || !deletePassword) return;
-    setIsDeleting(true);
-    toast.info("Deleting report...");
-
+  const loadChatHistory = async (reportId: string) => {
     try {
-      const res = await fetch(`/api/reports/${deletingReportId}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/chat/${reportId}`);
+      if (res.ok) {
+        setChatMessages(await res.json());
+      }
+    } catch (e) {}
+  };
+
+  const handleView = async (reportId: string) => {
+    setSelectedReportId(reportId);
+    setChatOpen(false);
+    setChatMessages([]);
+    loadChatHistory(reportId);
+    try {
+      const res = await fetch(`/api/reports/${reportId}/meta`);
+      const data = await res.json();
+      setSelectedReportType(data.isImage ? 'image' : 'pdf');
+    } catch (e) {
+      setSelectedReportType('pdf');
+    }
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || !selectedReportId) return;
+    const msg = chatInput;
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", content: msg }]);
+    setIsChatting(true);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: deletePassword })
+        body: JSON.stringify({ reportId: selectedReportId, message: msg })
       });
       const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to delete report");
+      if (res.ok) {
+        setChatMessages(prev => [...prev, { role: "ai", content: data.response }]);
+      } else {
+        toast.error(data.error);
       }
-      
-      toast.success("Report deleted successfully");
-      setDeletingReportId(null);
-      setDeletePassword("");
-      fetchReports(patientData.id);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error("Failed to send message");
     } finally {
-      setIsDeleting(false);
+      setIsChatting(false);
     }
   };
 
   if (!patientData) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 selection:bg-cyan-500/30 relative overflow-x-hidden">
-      <div className="absolute top-0 right-0 w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] rounded-full bg-cyan-100/50 blur-[80px] sm:blur-[100px] pointer-events-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:32px_32px] sm:bg-[size:64px_64px] pointer-events-none" />
-
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       <DashboardNavbar />
-
-      <main className="relative z-10 pt-24 pb-16 px-4 sm:px-6 max-w-5xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 text-gray-900">
-              Welcome back, {patientData.firstName}!
-            </h1>
-            <p className="text-sm text-gray-500 font-medium">Manage your medical records and upload new reports.</p>
-          </div>
-          
-          <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
-            <input 
-              type="file" 
-              id="upload-report" 
-              className="hidden" 
-              accept=".pdf,image/*" 
-              onChange={handleFileUpload} 
-            />
-            <input 
-              type="file" 
-              id="capture-report" 
-              className="hidden" 
-              accept="image/*" 
-              capture="environment"
-              onChange={handleFileUpload} 
-            />
-            <Button 
-              onClick={() => document.getElementById("upload-report")?.click()}
-              disabled={isUploading}
-              className="w-full md:w-auto bg-white hover:bg-gray-50 text-gray-900 border border-gray-200 text-sm font-bold h-12 px-6 shadow-sm rounded-xl transition-all duration-300 hover:scale-[1.02]"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              <span>{isUploading ? "Uploading..." : "Upload File"}</span>
-            </Button>
-            <Button 
-              onClick={() => document.getElementById("capture-report")?.click()}
-              disabled={isUploading}
-              className="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white text-sm font-bold h-12 px-6 shadow-xl shadow-emerald-500/20 border-0 rounded-xl transition-all duration-300 hover:scale-[1.02]"
-            >
-              <Camera className="w-5 h-5 mr-2" />
-              <span>{isUploading ? "Uploading..." : "Take Photo"}</span>
-            </Button>
-          </div>
+      <main className="pt-24 pb-16 px-4 sm:px-6 max-w-5xl mx-auto">
+        <h1 className="text-3xl font-extrabold mb-8 text-gray-900">Welcome, {patientData.firstName}!</h1>
+        
+        {/* Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-gray-200">
+          <button onClick={() => setActiveTab('records')} className={`pb-2 font-bold ${activeTab === 'records' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>My Records</button>
+          <button onClick={() => setActiveTab('book')} className={`pb-2 font-bold ${activeTab === 'book' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>Book Appointment</button>
+          <button onClick={() => setActiveTab('appointments')} className={`pb-2 font-bold ${activeTab === 'appointments' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-gray-500'}`}>My Appointments</button>
         </div>
 
-        {/* Patient Profile Card (Mobile Responsive) */}
-        <div className="bg-white rounded-2xl p-5 sm:p-6 mb-8 shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-6 items-start sm:items-center transition-all duration-300 hover:shadow-md">
-          <div className="flex items-center gap-4 w-full sm:w-auto sm:border-r border-gray-100 sm:pr-8">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-cyan-50 flex flex-shrink-0 items-center justify-center border border-emerald-100 shadow-sm">
-              <UserSquare2 className="w-7 h-7 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">{patientData.firstName} {patientData.lastName}</h3>
-              <p className="text-sm font-mono text-emerald-600 font-medium bg-emerald-50 inline-block px-2 py-0.5 rounded-md mt-1">
-                {patientData.patientId}
-              </p>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 w-full sm:pl-4">
-            <div className="flex items-start gap-3">
-              <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
-              <div>
-                <p className="text-xs text-gray-500 font-medium mb-0.5">Date of Birth</p>
-                <p className="text-sm font-semibold text-gray-900">{patientData.dob || "Not provided"}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-              <div>
-                <p className="text-xs text-gray-500 font-medium mb-0.5">Address</p>
-                <p className="text-sm font-semibold text-gray-900">{patientData.address || "Not provided"}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md">
-          <div className="px-5 sm:px-6 pt-6 pb-4 border-b border-gray-100 flex justify-between items-center">
-            <h2 className="text-lg font-extrabold flex items-center gap-3 text-gray-900">
-              <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-                <FileText className="w-4 h-4 text-emerald-600" />
-              </div>
-              Your Reports
-            </h2>
-          </div>
-
-          {isLoading ? (
-            <div className="text-center py-16 text-gray-500 text-sm animate-pulse">Loading your records...</div>
-          ) : reports.length === 0 ? (
-            <div className="text-center py-16 px-6 flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center mb-4">
-                <FileText className="w-8 h-8 text-gray-300" />
-              </div>
-              <p className="text-base font-semibold text-gray-900 mb-1">Your vault is empty</p>
-              <p className="text-sm text-gray-500">Upload your PDF medical reports to keep them safe.</p>
-            </div>
-          ) : (
-            <div className="w-full">
-              {/* Desktop Table View */}
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gray-100 hover:bg-transparent">
-                      <TableHead className="text-gray-500 text-sm font-semibold px-6">Report Name</TableHead>
-                      <TableHead className="text-gray-500 text-sm font-semibold">Date</TableHead>
-                      <TableHead className="text-gray-500 text-sm font-semibold text-right px-6">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reports.map((report) => (
-                      <TableRow key={report.id} className="border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <TableCell className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center border border-gray-100">
-                              <FileText className="w-5 h-5 text-gray-400" />
-                            </div>
-                            <span className="font-bold text-gray-900">{report.reportName}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-500 font-medium">
-                          {new Date(report.uploadDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                        </TableCell>
-                        <TableCell className="text-right px-6 flex justify-end gap-2">
-                          <Button onClick={() => handleView(report.id)} variant="outline" size="sm" className="h-9 px-4 border-cyan-200 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 shadow-sm rounded-lg font-bold transition-colors">
-                            <Eye className="w-4 h-4 mr-2" /> View
-                          </Button>
-                          <a href={`/api/reports/${report.id}`} target="_blank" rel="noreferrer">
-                            <Button variant="outline" size="sm" className="h-9 px-4 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm rounded-lg font-bold transition-colors">
-                              <FileDown className="w-4 h-4 mr-2" /> Download
-                            </Button>
-                          </a>
-                          <Button onClick={() => setDeletingReportId(report.id)} variant="outline" size="sm" className="h-9 px-4 border-red-200 bg-red-50 hover:bg-red-100 text-red-700 shadow-sm rounded-lg font-bold transition-colors">
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile List View */}
-              <div className="md:hidden flex flex-col divide-y divide-gray-100">
-                {reports.map((report) => (
-                  <div key={report.id} className="p-4 flex flex-col gap-3 active:bg-gray-50 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center border border-gray-100 flex-shrink-0">
-                        <FileText className="w-5 h-5 text-gray-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-gray-900 text-sm truncate">{report.reportName}</h4>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {new Date(report.uploadDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 w-full mt-2">
-                      <Button onClick={() => handleView(report.id)} variant="outline" size="sm" className="flex-1 h-10 border-cyan-200 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 shadow-sm rounded-lg font-bold">
-                        <Eye className="w-4 h-4 mr-2" /> View
-                      </Button>
-                      <a href={`/api/reports/${report.id}`} target="_blank" rel="noreferrer" className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full h-10 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-sm rounded-lg font-bold">
-                          <FileDown className="w-4 h-4 mr-2" /> DL
-                        </Button>
-                      </a>
-                      <Button onClick={() => setDeletingReportId(report.id)} variant="outline" size="sm" className="flex-1 h-10 border-red-200 bg-red-50 hover:bg-red-100 text-red-700 shadow-sm rounded-lg font-bold">
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Report Viewer Dialog */}
-        <Dialog open={!!selectedReportId} onOpenChange={(open) => {
-          if (!open) {
-            setSelectedReportId(null);
-            setSelectedReportType(null);
-          }
-        }}>
-          <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden">
-            <DialogHeader className="p-4 border-b bg-white flex-shrink-0">
-              <DialogTitle>View Document</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 w-full bg-gray-100 relative overflow-auto flex items-center justify-center p-4">
-              {selectedReportId && selectedReportType === 'image' && (
-                <img 
-                  src={`/api/reports/${selectedReportId}`} 
-                  className="max-w-full max-h-full object-contain rounded-md shadow-sm"
-                  alt="Document Viewer"
-                />
-              )}
-              {selectedReportId && selectedReportType === 'pdf' && (
-                <div className="w-full h-full overflow-y-auto">
-                  <PDFViewer url={`/api/reports/${selectedReportId}`} />
-                </div>
-              )}
-              {selectedReportId && !selectedReportType && (
-                <div className="animate-pulse text-gray-500 font-medium">Loading document...</div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={!!deletingReportId} onOpenChange={(open) => !open && setDeletingReportId(null)}>
-          <DialogContent className="max-w-sm w-[90vw]">
-            <DialogHeader>
-              <DialogTitle className="text-red-600">Delete Report?</DialogTitle>
-            </DialogHeader>
-            <div className="py-4">
-              <p className="text-sm text-gray-600 mb-4">Please enter your password to confirm permanent deletion of this report.</p>
-              <Input 
-                type="password" 
-                placeholder="Password" 
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                className="w-full border-gray-200"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingReportId(null)} disabled={isDeleting}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || !deletePassword}>
-                {isDeleting ? "Deleting..." : "Confirm Delete"}
+        {/* RECORDS TAB */}
+        {activeTab === 'records' && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-extrabold flex items-center gap-3"><FileText className="w-5 h-5 text-violet-600"/> Reports</h2>
+              <input type="file" id="upload-report" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} />
+              <Button onClick={() => document.getElementById('upload-report')?.click()} disabled={isUploading}>
+                {isUploading ? "Uploading..." : "Upload Report"}
               </Button>
             </div>
+            {reports.length === 0 ? <p className="text-gray-500">No reports uploaded yet.</p> : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Date</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {reports.map(r => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-bold">{r.reportName}</TableCell>
+                      <TableCell>{new Date(r.uploadDate).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => handleView(r.id)}><Eye className="w-4 h-4 mr-2"/> View & Chat</Button>
+                          <Button size="sm" variant="destructive" onClick={() => setDeletingReportId(r.id)}><Trash2 className="w-4 h-4 mr-2"/> Delete</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        )}
+
+        {/* BOOK APPOINTMENT TAB */}
+        {activeTab === 'book' && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm max-w-lg">
+            <h2 className="text-lg font-extrabold mb-6">Book an Appointment</h2>
+            <div className="flex flex-col gap-4">
+              <select className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm" value={booking.doctorId} onChange={e => setBooking({...booking, doctorId: e.target.value, timeSlot: ""})}>
+                <option value="">Select Doctor</option>
+                {doctors.map(d => <option key={d.id} value={d.id}>{d.name} ({d.designation})</option>)}
+              </select>
+              <Input type="date" value={booking.date} onChange={e => setBooking({...booking, date: e.target.value})} />
+              {booking.doctorId && (
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={booking.timeSlot} onChange={e => setBooking({...booking, timeSlot: e.target.value})}>
+                  <option value="">Select Time Slot</option>
+                  {doctors.find(d => d.id === booking.doctorId)?.availableSlots.map((s: string) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+              <Button onClick={handleBookAppointment} className="w-full">Book Now</Button>
+            </div>
+          </div>
+        )}
+
+        {/* MY APPOINTMENTS TAB */}
+        {activeTab === 'appointments' && (
+          <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm">
+            <h2 className="text-lg font-extrabold mb-6"><CalendarIcon className="w-5 h-5 text-amber-600 inline mr-2"/> My Appointments</h2>
+            {myAppointments.length === 0 ? <p className="text-gray-500">No appointments found.</p> : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Doctor</TableHead><TableHead>Date & Time</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {myAppointments.map(a => (
+                    <TableRow key={a.id}>
+                      <TableCell className="font-bold">{a.doctor.name} ({a.doctor.designation})</TableCell>
+                      <TableCell>{a.date} at {a.timeSlot}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 text-xs rounded font-bold ${a.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : a.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {a.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        )}
+
+        {/* Report Viewer & Chat Dialog */}
+        <Dialog open={!!selectedReportId} onOpenChange={(open) => !open && setSelectedReportId(null)}>
+          <DialogContent className="max-w-[95vw] w-[1200px] h-[90vh] p-0 flex flex-col sm:flex-row overflow-hidden">
+            
+            {/* Viewer Section */}
+            <div className={`flex-1 bg-gray-100 relative flex items-center justify-center ${chatOpen ? 'hidden sm:flex' : 'flex'}`}>
+              <Button variant="outline" size="sm" className="absolute top-4 left-4 z-10 shadow-md bg-white sm:hidden" onClick={() => setSelectedReportId(null)}>Close</Button>
+              {selectedReportId && selectedReportType === 'image' && <img src={`/api/reports/${selectedReportId}`} className="max-w-full max-h-full object-contain" />}
+              {selectedReportId && selectedReportType === 'pdf' && <div className="w-full h-full overflow-y-auto"><PDFViewer url={`/api/reports/${selectedReportId}`} /></div>}
+              {!chatOpen && (
+                <Button onClick={() => setChatOpen(true)} className="absolute bottom-6 right-6 shadow-xl rounded-full px-6 py-6 bg-violet-600 hover:bg-violet-700 text-white font-bold animate-bounce">
+                  <Bot className="w-5 h-5 mr-2" /> Ask AI about this document
+                </Button>
+              )}
+            </div>
+
+            {/* Chat Section */}
+            {chatOpen && (
+              <div className="w-full sm:w-[400px] bg-white border-l border-gray-200 flex flex-col h-full shadow-2xl z-20">
+                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                  <h3 className="font-bold flex items-center gap-2 text-violet-700"><Bot className="w-5 h-5" /> Medical AI Assistant</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setChatOpen(false)}>Hide</Button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-gray-50/50">
+                  {chatMessages.length === 0 && (
+                    <div className="text-center text-gray-400 mt-10">
+                      <Bot className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>Ask any questions about this document. I'll analyze it and explain it to you!</p>
+                    </div>
+                  )}
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>
+                        {msg.role === 'user' ? <User className="w-4 h-4"/> : <Bot className="w-4 h-4"/>}
+                      </div>
+                      <div className={`p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white border shadow-sm rounded-tl-none'}`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {isChatting && (
+                    <div className="flex gap-3 self-start max-w-[85%]">
+                      <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0"><Bot className="w-4 h-4 text-violet-700"/></div>
+                      <div className="p-3 rounded-2xl bg-white border shadow-sm text-sm rounded-tl-none animate-pulse flex gap-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div><div className="w-2 h-2 bg-gray-400 rounded-full"></div><div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="p-4 border-t bg-white">
+                  <div className="flex gap-2">
+                    <Input placeholder="Type your question..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChatMessage()} disabled={isChatting} className="rounded-xl border-gray-300" />
+                    <Button onClick={sendChatMessage} disabled={isChatting || !chatInput.trim()} className="rounded-xl bg-violet-600 hover:bg-violet-700 px-3">
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </main>
